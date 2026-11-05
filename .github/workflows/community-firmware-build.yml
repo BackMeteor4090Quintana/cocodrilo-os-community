@@ -1,0 +1,144 @@
+name: Community firmware ESP32-S3
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/community-firmware-build.yml'
+      - 'staging/**'
+      - 'src/community/**'
+      - 'config/**'
+      - 'tools/fetch_retrogo_gnuboy.sh'
+permissions:
+  contents: write
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - name: Prepare Community sketch
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/cocodrilo-os"
+          cp staging/cocodrilo-os.ino "$RUNNER_TEMP/cocodrilo-os/cocodrilo-os.ino"
+          cp src/community/*.h "$RUNNER_TEMP/cocodrilo-os/"
+          cp src/community/lowzag.c "$RUNNER_TEMP/cocodrilo-os/"
+          cp staging/emuladores/*.h "$RUNNER_TEMP/cocodrilo-os/"
+          cp staging/emuladores/*.cpp "$RUNNER_TEMP/cocodrilo-os/"
+          cp staging/recursos/*.h "$RUNNER_TEMP/cocodrilo-os/"
+          cp config/partitions.csv "$RUNNER_TEMP/cocodrilo-os/partitions.csv"
+      - name: Check local dependencies (exclude ESP32 / Arduino SDK)
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, re, sys
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'cocodrilo-os'
+          # Cabeceras incluidas con comillas que Arduino-ESP32 provee por su cuenta.
+          sdk_exact = {'FS.h', 'SD_MMC.h', 'esp_heap_caps.h', 'esp_timer.h'}
+          sdk_prefixes = ('driver/', 'freertos/', 'esp_', 'soc/', 'hal/')
+          missing = {}
+          ignored_sdk = set()
+          for f in sorted(root.iterdir()):
+              if f.suffix not in ('.ino', '.h', '.cpp', '.c'):
+                  continue
+              text = f.read_text(encoding='utf-8-sig')
+              for line_number, line in enumerate(text.splitlines(), 1):
+                  m = re.match(r'\s*#\s*include\s*"([^"]+)"', line)
+                  if not m:
+                      continue
+                  name = m.group(1)
+                  if (root / name).is_file():
+                      continue
+                  if name in sdk_exact or name.startswith(sdk_prefixes):
+                      ignored_sdk.add(name)
+                      continue
+                  missing.setdefault(name, []).append(f'{f.name}:{line_number}')
+          print('External SDK headers ignored:', ', '.join(sorted(ignored_sdk)) or '(none)')
+          if missing:
+              print('Missing Community project headers:')
+              for name, locations in sorted(missing.items()):
+                  print(f'  {name} — {", ".join(locations[:4])}')
+              print('Project headers must be migrated or personal modules removed.')
+              sys.exit(1)
+          print('All Community project headers were found.')
+          PY
+      - name: Install ESP32 core and graphical libraries
+        run: |
+          arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core install esp32:esp32@3.2.1 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli lib install 'TFT_eSPI@2.5.43'
+          arduino-cli lib install 'TJpg_Decoder'
+          # dr_mp3.h is versioned directly in src/community; no Helix download.
+          test -s "$GITHUB_WORKSPACE/src/community/dr_mp3.h"
+          test -s "$GITHUB_WORKSPACE/src/community/lowzag.c"
+          TFT_DIR="$(find "$HOME/Arduino/libraries" -maxdepth 1 -type d -name 'TFT_eSPI*' -print -quit)"
+          test -n "$TFT_DIR"
+          cp config/User_Setup.h "$TFT_DIR/User_Setup.h"
+      - name: Prepare customized Nofrendo and Gnuboy
+        run: bash tools/fetch_retrogo_gnuboy.sh
+      - name: Compile complete firmware
+        run: |
+          mkdir -p build
+          arduino-cli compile \
+            --fqbn 'esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PartitionScheme=custom,PSRAM=opi' \
+            --libraries "$GITHUB_WORKSPACE/libraries" \
+            --build-property 'compiler.cpp.extra_flags=-mlongcalls -mtext-section-literals -DOPTIMIZATION_FLAGS' \
+            --output-dir "$GITHUB_WORKSPACE/build" \
+            --export-binaries \
+            "$RUNNER_TEMP/cocodrilo-os"
+      - name: Publish binaries to firmware-builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          binaries=(build/*.bin)
+          if (( ${#binaries[@]} == 0 )); then
+            echo "No firmware .bin files produced" >&2
+            exit 1
+          fi
+
+          # Keep firmware-builds separate from the source checkout.
+          git fetch origin firmware-builds
+          OUT="$RUNNER_TEMP/community-firmware-publication"
+          git worktree add -B firmware-builds "$OUT" origin/firmware-builds
+
+          # Only publish downloadable build outputs in this branch.
+          cd "$OUT"
+          git rm -rq --ignore-unmatch .
+          git clean -fdx -q
+          cp "$GITHUB_WORKSPACE"/build/*.bin .
+          cp "$GITHUB_WORKSPACE"/build/*.elf . 2>/dev/null || true
+          cp "$GITHUB_WORKSPACE"/build/*.map . 2>/dev/null || true
+          # Include third-party license notices beside the private test firmware.
+          cp "$GITHUB_WORKSPACE/THIRD_PARTY_NOTICES.md" ./THIRD_PARTY_NOTICES.md
+          mkdir -p licenses
+          cp "$GITHUB_WORKSPACE"/licenses/*.txt licenses/
+          zip -9 -q -r cocodrilo-community-firmware.zip ./*.bin THIRD_PARTY_NOTICES.md licenses/
+
+          cat > README.md <<EOF
+          # COCODRILO OS Community firmware
+
+          Firmware generado automaticamente por GitHub Actions para ESP32-S3 N16R8.
+
+          - Rama fuente: \`$GITHUB_REF_NAME\`
+          - Commit fuente: \`$GITHUB_SHA\`
+          - Core ESP32: \`3.2.1\`
+          - Board: \`esp32:esp32:esp32s3\`
+
+          Descarga \`cocodrilo-community-firmware.zip\` para obtener los archivos BIN.
+          EOF
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Firmware output unchanged"
+          else
+            git commit -m "Build Community firmware ${GITHUB_SHA::7}"
+            git push origin HEAD:firmware-builds
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: community-firmware-esp32s3
+          path: build/*.bin
+          if-no-files-found: error

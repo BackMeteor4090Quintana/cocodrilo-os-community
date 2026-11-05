@@ -1,0 +1,67 @@
+name: Retro-Go - preparar nucleos Cocodrilo
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/fetch_retrogo_gnuboy.sh'
+      - '.github/workflows/retrogo-cores.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  preparar-nucleos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Descargar Community
+        uses: actions/checkout@v4
+
+      - name: Preparar Nofrendo y Gnuboy como en el firmware privado
+        run: bash tools/fetch_retrogo_gnuboy.sh
+
+      - name: Registrar revision externa y verificar adaptaciones
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s libraries/RetroGoNofrendo/src/nes/cpu.c
+          test -s libraries/RetroGoNofrendo/src/nes/ppu.c
+          test -s libraries/RetroGoGnuboy/src/gnuboy.h
+
+          python3 - <<'PY'
+          from pathlib import Path
+          nes = Path('libraries/RetroGoNofrendo/src')
+          gb = Path('libraries/RetroGoGnuboy/src')
+          cpu = (nes / 'nes/cpu.c').read_text()
+          ppu = (nes / 'nes/ppu.c').read_text()
+          assert '#define NES6502_JUMPTABLE' in cpu, 'Falta jump table CPU NES'
+          assert 'uint8 *page = ppu.page[tile_addr >> PPU_PAGESHIFT]' in ppu, 'Falta optimizacion CHR PPU'
+          assert 'const uint32 pattern = get_patpix(tile_addr)' in ppu, 'Falta optimizacion OAM PPU'
+          assert '#pragma GCC optimize ("O3")' in cpu
+          assert '#pragma GCC optimize ("O3")' in ppu
+          for c in gb.glob('*.c'):
+              assert '#pragma GCC optimize ("O3")' in c.read_text(), f'Falta O3 en {c}'
+          assert list(gb.glob('*.c')), 'No se encontraron fuentes Gnuboy'
+          for name, root in [('Nofrendo', nes), ('Gnuboy', gb)]:
+              license_path = root.parent / 'COPYING'
+              assert license_path.is_file() and license_path.stat().st_size > 0, f'Falta COPYING de {name}'
+          print('OK: parches de Nofrendo y Gnuboy; licencias COPYING presentes')
+          PY
+
+          git -C /tmp/retro-go rev-parse HEAD | tee retrogo-upstream-commit.txt
+          cp retrogo-upstream-commit.txt libraries/retrogo-upstream-commit.txt
+
+      - name: Guardar nucleos preparados y sus licencias
+        uses: actions/upload-artifact@v4
+        with:
+          name: retrogo-nofrendo-gnuboy-cocodrilo
+          path: |
+            libraries/RetroGoNofrendo/
+            libraries/RetroGoGnuboy/
+            libraries/retrogo-upstream-commit.txt
+          retention-days: 14
+          if-no-files-found: error
+
+# Los adaptadores estan en staging: esta tarea prepara y verifica los nucleos,
+# pero NO compila el firmware principal ni publica ROMs o firmware.

@@ -1,0 +1,28 @@
+name: Publication safety checks
+
+on:
+  push:
+    paths:
+      - 'staging/**'
+      - 'src/**'
+      - 'config/**'
+      - 'tools/publication_audit.py'
+      - '.github/workflows/publication-safety.yml'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-privacy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan tracked sources for private references and credentials
+        run: python3 tools/publication_audit.py
+      - name: Explain remaining manual gates
+        run: |
+          echo 'Passing this source scan does NOT approve public visibility.'
+          echo 'Manually audit ALL binary assets and git history.'
+          echo 'Verify third-party licenses, attribution, build and hardware tests.'

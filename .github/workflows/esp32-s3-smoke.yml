@@ -1,0 +1,41 @@
+name: ESP32-S3 - prueba de compilacion basica
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/esp32-s3-smoke.yml'
+      - 'tests/esp32_s3_smoke/**'
+      - 'config/User_Setup.h'
+
+permissions:
+  contents: read
+
+jobs:
+  compilar-prueba:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Descargar Community
+        uses: actions/checkout@v4
+      - name: Instalar Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+      - name: Instalar core Espressif
+        run: |
+          arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core install esp32:esp32@3.2.1 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+      - name: Instalar pantalla TFT
+        run: |
+          arduino-cli lib install "TFT_eSPI@2.5.43"
+          TFT_DIR="$(find "$HOME/Arduino/libraries" -maxdepth 1 -type d -name 'TFT_eSPI*' -print -quit)"
+          test -n "$TFT_DIR"
+          cp config/User_Setup.h "$TFT_DIR/User_Setup.h"
+          echo "TFT_DIR=$TFT_DIR" >> "$GITHUB_ENV"
+      - name: Compilar prueba basica ESP32-S3
+        run: |
+          arduino-cli compile --verbose \
+            --fqbn "esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi" \
+            --warnings all \
+            tests/esp32_s3_smoke
+
+# Esto no verifica el sketch staging/cocodrilo-os.ino ni prueba el hardware fisico.
