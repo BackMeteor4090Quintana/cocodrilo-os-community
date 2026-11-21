@@ -1,0 +1,58 @@
+name: Anemoia NES playtest (manual, no publish)
+
+on:
+  workflow_dispatch:
+
+# Solo leer fuentes, nunca publicar en firmware-builds.
+permissions:
+  contents: read
+
+jobs:
+  build-playtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - name: Prepare NES-only playtest
+        run: |
+          set -euo pipefail
+          bash tools/prepare_anemoia_playtest.sh
+          SKETCH="$RUNNER_TEMP/cocodrilo-anemoia-playtest/AnemoiaPlaytest"
+          test -s "$SKETCH/COCODRILO_NES_Anemoia.h"
+          test -s "$SKETCH/AudioMAX98357.h"
+          test -s "$SKETCH/src/core/bus.cpp"
+          if grep -qrE '#include[[:space:]]*[<"]gnuboy|#include[[:space:]]*[<"]nes/nes.h' "$SKETCH"; then
+            echo "No se permite incluir Gnuboy ni Nofrendo en la prueba GPLv3" >&2
+            exit 1
+          fi
+      - name: Install board and display library
+        run: |
+          set -euo pipefail
+          arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core install esp32:esp32@3.2.1 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli lib install 'TFT_eSPI@2.5.43'
+          TFT_DIR="$(find "$HOME/Arduino/libraries" -maxdepth 1 -type d -name 'TFT_eSPI*' -print -quit)"
+          test -n "$TFT_DIR"
+          cp config/User_Setup.h "$TFT_DIR/User_Setup.h"
+      - name: Build isolated Anemoia NES playtest
+        run: |
+          set -euo pipefail
+          SKETCH="$RUNNER_TEMP/cocodrilo-anemoia-playtest/AnemoiaPlaytest"
+          mkdir -p "$RUNNER_TEMP/anemoia-playtest-build"
+          arduino-cli compile \
+            --fqbn 'esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PartitionScheme=custom,PSRAM=opi' \
+            --build-property "compiler.cpp.extra_flags=-DOPTIMIZATION_FLAGS -I$SKETCH/src" \
+            --build-property "compiler.c.extra_flags=-DOPTIMIZATION_FLAGS -I$SKETCH/src" \
+            --output-dir "$RUNNER_TEMP/anemoia-playtest-build" \
+            --export-binaries \
+            "$SKETCH"
+      - name: Upload downloadable test firmware (not firmware-builds)
+        uses: actions/upload-artifact@v4
+        with:
+          name: cocodrilo-anemoia-nes-playtest
+          path: |
+            ${{ runner.temp }}/anemoia-playtest-build/*.bin
+            ${{ runner.temp }}/cocodrilo-anemoia-playtest/ANEMOIA_LICENSE_GPLv3.txt
+          if-no-files-found: error
+          retention-days: 7
