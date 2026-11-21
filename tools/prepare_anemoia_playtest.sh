@@ -80,12 +80,12 @@ static void buscarJuegos() {
   juegosTotal = 0;
   seleccionado = 0;
   primero = 0;
-  File dir = SD_MMC.open("/NES");
+  fs::File dir = SD_MMC.open("/NES");
   if (!dir || !dir.isDirectory()) {
     if (dir) dir.close();
     return;
   }
-  File f = dir.openNextFile();
+  fs::File f = dir.openNextFile();
   while (f && juegosTotal < MAX_JUEGOS) {
     if (!f.isDirectory()) {
       String nombre = f.name();
