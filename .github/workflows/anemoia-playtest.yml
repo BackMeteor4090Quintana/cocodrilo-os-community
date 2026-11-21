@@ -21,6 +21,8 @@ jobs:
           SKETCH="$RUNNER_TEMP/cocodrilo-anemoia-playtest/AnemoiaPlaytest"
           test -s "$SKETCH/COCODRILO_NES_Anemoia.h"
           test -s "$SKETCH/AudioMAX98357.h"
+          test -s "$SKETCH/BacklightControl.h"
+          grep -q "BacklightControl::iniciar()" "$SKETCH/AnemoiaPlaytest.ino"
           test -s "$SKETCH/src/core/bus.cpp"
           if grep -qrE '#include[[:space:]]*[<"]gnuboy|#include[[:space:]]*[<"]nes/nes.h' "$SKETCH"; then
             echo "No se permite incluir Gnuboy ni Nofrendo en la prueba GPLv3" >&2
