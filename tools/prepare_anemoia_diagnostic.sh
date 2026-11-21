@@ -20,6 +20,7 @@ fi
 mkdir -p "$SKETCH"
 cp -R "$ANEMOIA/src" "$SKETCH/src"
 cp "$ANEMOIA/ANEMOIA_LICENSE_GPLv3.txt" "$OUT/ANEMOIA_LICENSE_GPLv3.txt"
+cp "$ROOT/config/partitions.csv" "$SKETCH/partitions.csv"
 
 cat > "$SKETCH/AnemoiaDiagnostic.ino" <<'EOF'
 #include <Arduino.h>
