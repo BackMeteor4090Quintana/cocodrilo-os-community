@@ -20,6 +20,7 @@ mkdir -p "$SKETCH"
 cp -R "$ANEMOIA/src" "$SKETCH/src"
 cp "$ANEMOIA/COCODRILO_NES_Anemoia.h" "$SKETCH/"
 cp "$ROOT/src/community/AudioMAX98357.h" "$SKETCH/"
+cp "$ROOT/src/community/BacklightControl.h" "$SKETCH/"
 cp "$ROOT/src/community/metronomo_wav_pcm.h" "$SKETCH/"
 cp "$ROOT/config/partitions.csv" "$SKETCH/partitions.csv"
 cp "$ANEMOIA/ANEMOIA_LICENSE_GPLv3.txt" "$OUT/ANEMOIA_LICENSE_GPLv3.txt"
@@ -45,6 +46,7 @@ cat > "$SKETCH/AnemoiaPlaytest.ino" <<'EOF'
 #define SD_MMC_D0 40
 
 #include "AudioMAX98357.h"
+#include "BacklightControl.h"
 #include "COCODRILO_NES_Anemoia.h"
 
 static TFT_eSPI pantalla;
@@ -150,10 +152,18 @@ static void recargar() {
 
 void setup() {
   Serial.begin(115200);
+  Serial.println("[ANEMOIA TEST] Inicio setup");
   botones();
+  // La pantalla de COCODRILO usa un P-MOSFET activo en LOW sobre GPIO21.
+  // Inicializar antes de TFT y activar tras el primer frame negro.
+  BacklightControl::prepararAntesTFT();
+  Serial.println("[ANEMOIA TEST] TFT init");
   pantalla.init();
   pantalla.setRotation(1);
   pantalla.fillScreen(TFT_BLACK);
+  BacklightControl::cargar();
+  BacklightControl::iniciar();
+  Serial.println("[ANEMOIA TEST] TFT + backlight preparados");
   mensaje("INICIANDO ANEMOIA", "Firmware de prueba NES");
   const bool audioOK = AudioMAX98357::begin();
   Serial.printf("[ANEMOIA TEST] Audio I2S: %s\n", audioOK ? "OK" : "NO");
