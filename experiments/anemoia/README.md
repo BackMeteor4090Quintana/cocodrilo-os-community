@@ -79,3 +79,12 @@ Esta versión experimental **no es el firmware completo de COCODRILO OS**. Insta
 El código Anemoia existente usa estados de guardado por CRC32 en `/states`. No asumir que son compatibles con otros emuladores; hacer copia de esos estados antes de probar. No flashar esta prueba hasta confirmar que la compilación es exitosa y se comprende el procedimiento de instalación.
 
 Las licencias del núcleo y del firmware de prueba se deben revisar antes de una distribución más amplia; el archivo GPLv3 del proyecto Anemoia se incluye en el artefacto. El firmware público principal sigue funcionando con sus núcleos anteriores y los BIN permanecen intactos.
+
+
+### Pantalla negra: corrección GPIO21 (21-11-2026)
+
+La primera compilación jugable tuvo un fallo de integración: no inicializaba la **retroiluminación**. El panel ST7789 de COCODRILO OS usa `BacklightControl.h` y P-MOSFET high-side activo en **LOW** sobre GPIO21. El playtest compilaba pero podía mostrar pantalla completamente oscura.
+
+El generador `prepare_anemoia_playtest.sh` ahora copia el controlador y ejecuta `BacklightControl::prepararAntesTFT()` antes de `pantalla.init()`, seguido de `BacklightControl::cargar()` y `BacklightControl::iniciar()` después del primer borrado negro. El workflow verifica la presencia de ese controlador. El monitor serie registra etapas de arranque a 115200 baudios.
+
+**Importante:** hay que compilar de nuevo con el workflow y descargar **el nuevo artefacto**, no reutilizar el ZIP de la ejecución anterior. El arreglo todavía requiere validación en la consola física. Si sigue oscuro, obtener el registro serie para diferenciar fallo de arranque, flash o SPI. No publicar como estable.
