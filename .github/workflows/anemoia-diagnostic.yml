@@ -35,7 +35,6 @@ jobs:
             --fqbn 'esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PartitionScheme=custom,PSRAM=opi' \
             --build-property "compiler.cpp.extra_flags=-I$SKETCH/src" \
             --build-property "compiler.c.extra_flags=-I$SKETCH/src" \
-            --build-property "build.partitions=default_16MB" \
             --output-dir "$RUNNER_TEMP/anemoia-build" \
             "$SKETCH"
       - name: Report
