@@ -39,3 +39,17 @@ Evaluar el regreso de [Anemoia-ESP32](https://github.com/Shim06/Anemoia-ESP32) c
 ## GB/GBC
 
 Se mantiene `experiments/binjgb/` en pausa. **GBC sigue siendo obligatorio**. La implementación Gnuboy existente y los BIN históricos no se borran ni se modifican por esta fase.
+
+
+## Recuperación técnica incorporada (21-11-2026)
+
+Se incorporaron dos archivos operativos en `main`:
+
+- [`tools/prepare_anemoia_diagnostic.sh`](../../tools/prepare_anemoia_diagnostic.sh): ensambla fuera del checkout un sketch Arduino con **todas las fuentes del núcleo Anemoia ya adaptado**, la licencia GPLv3 y la tabla de particiones de COCODRILO OS. No copia Gnuboy ni Nofrendo.
+- [`.github/workflows/anemoia-diagnostic.yml`](../../.github/workflows/anemoia-diagnostic.yml): compilación **manual** del núcleo para ESP32-S3, Arduino-ESP32 3.2.1, TFT_eSPI 2.5.43, flash 16 MB y PSRAM OPI. No publica resultados en `firmware-builds` ni instala firmware.
+
+**Ejecutar la verificación:** GitHub → Actions → **Anemoia NES diagnostic (no publish)** → Run workflow → `main`. El resultado de Actions determina si la compilación del núcleo está correcta; incorporar este workflow no equivale a haberla ejecutado.
+
+**Fork revisado:** [rkindustriesYT/Anemoia-NES-Emulator-fixes](https://github.com/rkindustriesYT/Anemoia-NES-Emulator-fixes), que conserva la licencia GPLv3 de Anemoia. Sus arreglos de reinicio, configuración, pila y video son una referencia, pero nuestro núcleo tiene modificaciones extensas de COCODRILO en APU, bus, PPU, pantalla y audio; **no se sobrescribieron** sin comparar los cambios concretos.
+
+**Límite de esta verificación:** comprueba que las fuentes pueden compilar y enlazarse en un sketch aislado; todavía no verifica el adaptador `COCODRILO_NES_Anemoia.h`, el lanzador, la reproducción de juegos, el audio MAX98357 ni los FPS. La migración definitiva sigue bloqueada hasta tener una integración completa probada y legalmente compatible.
