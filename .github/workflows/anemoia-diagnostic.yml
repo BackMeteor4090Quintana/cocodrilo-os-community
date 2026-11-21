@@ -1,0 +1,45 @@
+name: Anemoia NES diagnostic (no publish)
+
+# Comprobación manual, no toca firmware-builds ni produce firmware distribuido.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  anemoia-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - name: Prepare isolated Anemoia sketch
+        run: |
+          bash tools/prepare_anemoia_diagnostic.sh
+          test -s "$RUNNER_TEMP/cocodrilo-anemoia-diagnostic/AnemoiaDiagnostic/src/core/bus.cpp"
+          test -s "$RUNNER_TEMP/cocodrilo-anemoia-diagnostic/ANEMOIA_LICENSE_GPLv3.txt"
+      - name: Install ESP32-S3 core and TFT library
+        run: |
+          arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core install esp32:esp32@3.2.1 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli lib install 'TFT_eSPI@2.5.43'
+          TFT_DIR="$(find "$HOME/Arduino/libraries" -maxdepth 1 -type d -name 'TFT_eSPI*' -print -quit)"
+          test -n "$TFT_DIR"
+          cp config/User_Setup.h "$TFT_DIR/User_Setup.h"
+      - name: Compile Anemoia core only (no BIN publication)
+        run: |
+          SKETCH="$RUNNER_TEMP/cocodrilo-anemoia-diagnostic/AnemoiaDiagnostic"
+          mkdir -p "$RUNNER_TEMP/anemoia-build"
+          arduino-cli compile \
+            --fqbn 'esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PartitionScheme=custom,PSRAM=opi' \
+            --build-property "compiler.cpp.extra_flags=-I$SKETCH/src" \
+            --build-property "compiler.c.extra_flags=-I$SKETCH/src" \
+            --build-property "build.partitions=default_16MB" \
+            --output-dir "$RUNNER_TEMP/anemoia-build" \
+            "$SKETCH"
+      - name: Report
+        if: success()
+        run: |
+          echo "Anemoia: compilación aislada del núcleo correcta; no se ha probado juego, audio, FPS ni integración con launcher."
+          echo "No se publicaron BIN ni se cambió firmware-builds."
